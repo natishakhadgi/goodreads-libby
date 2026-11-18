@@ -4,7 +4,7 @@ import Header from './components/Header';
 import Listings from './components/Listings';
 import UserInfo from './components/UserInfo';
 import findLibraryRecommendations from './functions/findLibraryRecommendations';
-import isbn10To13 from './functions/isbn10To13';
+import isbn10To13 from './functions/isbn10To13.js';
 import {
   CACHE_TTL_MS,
   cacheGoodreadsShelf,

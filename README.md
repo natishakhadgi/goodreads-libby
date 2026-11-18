@@ -34,8 +34,10 @@ no owned copies in any selected library.
 ## OverDrive API proxy
 
 OverDrive does not allow browser-origin requests from this app. The Vite
-development server proxies `/api/overdrive` to the OverDrive Thunder API so
-local development works without a browser CORS error. A production deployment
-must provide an equivalent server-side proxy at that path, rewriting requests
-to `https://thunder.api.overdrive.com/v2`; the built static app alone does not
-include this proxy.
+development server proxies `/api/overdrive` to the OverDrive Thunder API.
+Production uses `server.js` to serve the built app and proxy supported media
+requests to `https://thunder.api.overdrive.com/v2`. Deploy it on Render as a
+**Web Service**, using the included `render.yaml` build and start commands.
+The existing static-site service does not run the proxy; create a Web Service
+from this repository and use its URL (or move your custom domain to it) for
+production traffic.

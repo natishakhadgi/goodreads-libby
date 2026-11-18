@@ -4,8 +4,9 @@ const List = ({books}) => {
     return (
         <Box display='flex' flexDirection='column' gap={2}>
             {
-                books.map(book => {
-                  return <Box 
+                books?.map((book, index) => {
+                  return <Box
+                    key={`${book.title}-${index}`}
                     display='flex'
                     flexDirection={{xs: 'column', sm: 'row'}}
                     justifyContent={{sm: 'space-between'}}

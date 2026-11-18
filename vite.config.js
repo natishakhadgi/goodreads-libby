@@ -10,6 +10,15 @@ export default defineConfig(({ command, mode }) => {
         'process.env.LOCAL_API': JSON.stringify(env.LOCAL_API),
         'process.env.NICOLE_PROFILE': JSON.stringify(env.NICOLE_PROFILE)
     },
+    server: {
+      proxy: {
+        '/api/overdrive': {
+          target: 'https://thunder.api.overdrive.com',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/overdrive/, '/v2'),
+        },
+      },
+    },
     plugins: [react()],
   };
 })

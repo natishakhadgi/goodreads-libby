@@ -40,7 +40,10 @@ const loadGoodreadsBooks = async (userId, signal) => {
   let result = {};
 
   for (let page = 1; ; page += 1) {
-    const query = new URLSearchParams({ page: `${page}` });
+    const query = new URLSearchParams({
+      page: `${page}`,
+      per_page: '30',
+    });
     const response = await fetch(
       `https://api.piratereads.com/${encodeURIComponent(userId)}/want-to-read?${query}`,
       { signal }
@@ -78,7 +81,12 @@ const loadGoodreadsBooks = async (userId, signal) => {
 
 const getLibraryKey = (library) => String(library.libraryId);
 
-const buildRecommendationData = (books, libraryListings, libraries) => {
+const buildRecommendationData = (
+  books,
+  libraryListings,
+  libraries,
+  maxWaitDays
+) => {
   const allLibrariesSearched =
     libraries.length > 0 &&
     libraries.every((library) =>
@@ -104,28 +112,48 @@ const buildRecommendationData = (books, libraryListings, libraries) => {
     readListings: listings
       .map((listing) => ({
         ...listing,
-        books: listing.books.filter((book) => book.availableCopies > 0),
+        books: listing.books.filter(
+          (book) =>
+            book.availableCopies > 0 &&
+            book.estimatedWaitDays <= maxWaitDays
+        ),
       }))
       .filter((listing) => listing.books.length > 0),
     holdListings: listings
       .map((listing) => ({
         ...listing,
         books: listing.books.filter(
-          (book) => book.ownedCopies > 0 && book.availableCopies === 0
+          (book) =>
+            book.ownedCopies > 0 &&
+            book.availableCopies === 0 &&
+            book.estimatedWaitDays <= maxWaitDays
         ),
       }))
       .filter((listing) => listing.books.length > 0),
     wishListListings: allLibrariesSearched
-      ? listings
-          .filter((listing) => !listing.books.some((book) => book.ownedCopies > 0))
-          .map((listing) => ({ ...listing, books: [] }))
+      ? listings.flatMap((listing) => {
+          const longWaitCopies = listing.books.filter(
+            (book) => book.estimatedWaitDays > maxWaitDays
+          );
+          if (longWaitCopies.length > 0) {
+            return [{ ...listing, books: longWaitCopies }];
+          }
+          return listing.books.some((book) => book.ownedCopies > 0)
+            ? []
+            : [{ ...listing, books: [] }];
+        })
       : [],
   };
 };
 
 function App() {
   const [tab, setTab] = useState('home');
-  const [userInfo, setUserInfo] = useState({ url: '', libraries: [] });
+  const [userInfo, setUserInfo] = useState({
+    url: '',
+    libraries: [],
+    formatSelection: 'both',
+    maxWaitDays: '90',
+  });
   const [shelfCache, setShelfCache] = useState(null);
   const [libraryListings, setLibraryListings] = useState({});
   const [loading, setLoading] = useState(false);
@@ -332,6 +360,18 @@ function App() {
     );
   };
 
+  const handleFormatSelectionChange = (formatSelection) => {
+    if (formatSelection === userInfo.formatSelection) return;
+    requestRef.current?.abort();
+    requestRef.current = null;
+    setLoading(false);
+    setProgress(null);
+    setLibraryListings({});
+    setLoadError('');
+    setSearchMessage('');
+    setUserInfo((prev) => ({ ...prev, formatSelection }));
+  };
+
   const handleAnalyze = async (event) => {
     event.preventDefault();
     setLoadError('');
@@ -343,6 +383,14 @@ function App() {
     try {
       const userId = getGoodreadsUserId(userInfo.url.trim());
       activeProfileRef.current = userId;
+      const maxWaitDays = Number(userInfo.maxWaitDays);
+      if (
+        !`${userInfo.maxWaitDays}`.trim() ||
+        !Number.isInteger(maxWaitDays) ||
+        maxWaitDays < 0
+      ) {
+        throw new Error('Enter a whole-number wait limit of 0 days or more.');
+      }
       if (userInfo.libraries.length === 0) {
         throw new Error('Select at least one library to search.');
       }
@@ -364,6 +412,7 @@ function App() {
           userInfo.libraries,
           controller.signal,
           {
+            formatSelection: userInfo.formatSelection,
             onProgress: setProgress,
             onCacheError: () => {
               setCacheWarning(
@@ -441,13 +490,21 @@ function App() {
         ? buildRecommendationData(
             shelfCache.books,
             libraryListings,
-            userInfo.libraries
+            userInfo.libraries,
+            /^\d+$/.test(userInfo.maxWaitDays)
+              ? Number(userInfo.maxWaitDays)
+              : 90
           )
         : null,
-    [shelfCache, libraryListings, userInfo.libraries]
+    [
+      shelfCache,
+      libraryListings,
+      userInfo.libraries,
+      userInfo.maxWaitDays,
+    ]
   );
   const searchProgressText = progress
-    ? `${progress.completed} of ${progress.total} book searches complete`
+    ? `${progress.completed} of ${progress.total} book/library searches complete`
     : 'Loading Goodreads shelf…';
 
   return (
@@ -457,6 +514,7 @@ function App() {
         <UserInfo
           userInfo={userInfo}
           setUserInfo={setUserInfo}
+          onFormatSelectionChange={handleFormatSelectionChange}
           onGoodreadsUrlChange={handleGoodreadsUrlChange}
           onPrefetchShelf={ensureGoodreadsShelf}
           onLibrariesChange={handleLibrariesChange}

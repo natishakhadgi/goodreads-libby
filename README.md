@@ -15,8 +15,9 @@ Enter a Goodreads profile URL in the form `/user/show/<user-id>` and select one
 or more libraries before choosing **Find recommendations**.
 
 The Want to Read shelf starts loading immediately when a profile URL is pasted,
-or after a 700 ms pause when it is typed manually. Library searches remain a
-separate step so the user can choose libraries while the shelf is loading.
+or after a 700 ms pause when it is typed manually. Goodreads shelf requests ask
+for up to 30 books per page. Library searches remain a separate step so the
+user can choose libraries while the shelf is loading.
 
 The Goodreads shelf and each book/library search result are cached in this
 browser for six hours. Searches already in the cache are skipped on later
@@ -26,6 +27,10 @@ title IDs in bulk and falls back to title searches when bulk results do not
 include complete availability data. Catalog requests run with a maximum
 concurrency of 16; the progress bar counts cached and newly completed
 book/library searches.
+
+Choose e-book, audio, or both before searching to limit the catalog formats.
+The maximum acceptable wait defaults to 90 days. Matches with longer wait
+estimates appear in Wishlist Rec instead of Read Rec or Hold Rec.
 
 The Read tab shows matches with available copies. Hold shows titles owned by a
 selected library with no available copies. Wishlist shows Goodreads titles with

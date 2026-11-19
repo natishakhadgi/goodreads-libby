@@ -17,10 +17,11 @@ const normalize = (value) =>
 const makeCatalogPrefix = (libraryId) =>
   `${CATALOG_PREFIX}${encodeURIComponent(String(libraryId))}:`;
 
-const makeCatalogKey = (libraryId, book) => {
+const makeCatalogKey = (libraryId, book, formatSelection = 'both') => {
   const title = normalize(book.book_title ?? book.title);
   const author = normalize(book.book_author ?? book.author);
-  return `${makeCatalogPrefix(libraryId)}${encodeURIComponent(`${title}::${author}`)}`;
+  const suffix = formatSelection === 'both' ? '' : `::${formatSelection}`;
+  return `${makeCatalogPrefix(libraryId)}${encodeURIComponent(`${title}::${author}${suffix}`)}`;
 };
 
 const readEntry = (key, onError) => {
@@ -67,8 +68,13 @@ export const getCachedGoodreadsShelf = (userId, onError) =>
 export const cacheGoodreadsShelf = (userId, books, onError) =>
   writeEntry(makeShelfKey(userId), books, onError);
 
-export const getCachedCatalogResult = (libraryId, book, onError) => {
-  const key = makeCatalogKey(libraryId, book);
+export const getCachedCatalogResult = (
+  libraryId,
+  book,
+  formatSelection = 'both',
+  onError
+) => {
+  const key = makeCatalogKey(libraryId, book, formatSelection);
 
   try {
     const raw = globalThis.localStorage?.getItem(key);
@@ -91,8 +97,18 @@ export const getCachedCatalogResult = (libraryId, book, onError) => {
   }
 };
 
-export const cacheCatalogResult = (libraryId, book, results, onError) =>
-  writeEntry(makeCatalogKey(libraryId, book), results, onError);
+export const cacheCatalogResult = (
+  libraryId,
+  book,
+  results,
+  formatSelection = 'both',
+  onError
+) =>
+  writeEntry(
+    makeCatalogKey(libraryId, book, formatSelection),
+    results,
+    onError
+  );
 
 export const removeLibraryCatalogCache = (libraryId, onError) => {
   try {

@@ -3,7 +3,12 @@ import {
   Box,
   Chip,
   Button,
+  FormControl,
+  FormControlLabel,
+  FormLabel,
   LinearProgress,
+  Radio,
+  RadioGroup,
   Stack,
   TextField,
   Typography,
@@ -14,6 +19,7 @@ import libraryLocator from '../functions/libraryLocator';
 const UserInfo = ({
   userInfo,
   setUserInfo,
+  onFormatSelectionChange,
   onGoodreadsUrlChange,
   onPrefetchShelf,
   onLibrariesChange,
@@ -168,6 +174,37 @@ const UserInfo = ({
           )}
         </Box>
 
+        <FormControl>
+          <FormLabel sx={{ mb: 1 }}>
+            What would you like to borrow?
+          </FormLabel>
+          <RadioGroup
+            row
+            name="format-selection"
+            value={userInfo.formatSelection}
+            onChange={(event) => onFormatSelectionChange(event.target.value)}
+          >
+            <FormControlLabel value="ebook" control={<Radio />} label="E-book" />
+            <FormControlLabel value="audio" control={<Radio />} label="Audio" />
+            <FormControlLabel value="both" control={<Radio />} label="Both" />
+          </RadioGroup>
+        </FormControl>
+
+        <TextField
+          type="number"
+          label="Maximum acceptable wait (days)"
+          value={userInfo.maxWaitDays}
+          onChange={(event) =>
+            setUserInfo((prev) => ({
+              ...prev,
+              maxWaitDays: event.target.value,
+            }))
+          }
+          inputProps={{ min: 0, step: 1 }}
+          helperText="Longer waits appear in Wishlist Rec. Default: 90 days."
+          required
+        />
+
         <Box>
           <Typography variant="subtitle1" sx={{ mb: 1 }}>
             Libraries
@@ -256,7 +293,7 @@ const UserInfo = ({
             />
             <Typography role="status" align="center" sx={{ mt: 1 }}>
               {loading && progress
-                ? `${progress.completed} of ${progress.total} book searches complete`
+                ? `${progress.completed} of ${progress.total} book/library searches complete`
                 : 'Loading Goodreads shelf…'}
             </Typography>
           </Box>

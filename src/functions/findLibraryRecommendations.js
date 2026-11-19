@@ -3,17 +3,36 @@ import {
   getCachedCatalogResult,
 } from './recommendationCache.js';
 
-const FORMATS = [
+const EBOOK_FORMATS = [
   'ebook-kindle',
   'ebook-overdrive',
   'ebook-epub-adobe',
   'ebook-pdf-adobe',
   'ebook-kobo',
+];
+const AUDIOBOOK_FORMATS = [
   'audiobook-overdrive',
   'audiobook-mp3',
 ];
-const FORMAT_QUERY = FORMATS.join(',');
-const FORMAT_IDS = new Set(FORMATS);
+const FORMAT_SELECTIONS = {
+  ebook: EBOOK_FORMATS,
+  audio: AUDIOBOOK_FORMATS,
+  both: [...EBOOK_FORMATS, ...AUDIOBOOK_FORMATS],
+};
+const matchesFormatSelection = (item, formatSelection) => {
+  const allowedFormats = new Set(FORMAT_SELECTIONS[formatSelection]);
+  if (Array.isArray(item.formats) && item.formats.length > 0) {
+    return item.formats.some((format) =>
+      allowedFormats.has(typeof format === 'string' ? format : format?.id)
+    );
+  }
+
+  const type = item.type?.id;
+  return (
+    (type === 'ebook' && formatSelection !== 'audio') ||
+    (type === 'audiobook' && formatSelection !== 'ebook')
+  );
+};
 const SEARCH_CONCURRENCY = 16;
 const BULK_BATCH_SIZE = 100;
 
@@ -21,7 +40,7 @@ const normalizeTitle = (title) =>
   `${title || ''}`.toLocaleLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const toCatalogResult = (item, library) => ({
-  titleId: String(item.id),
+  titleId: item.id == null ? '' : String(item.id),
   library: library.name,
   libraryId: library.libraryId,
   format: item.type?.name ?? 'Unknown format',
@@ -32,11 +51,24 @@ const toCatalogResult = (item, library) => ({
   image: item.covers?.cover150Wide?.href ?? item.cover ?? '',
 });
 
-const searchLibrary = async ({ book, library, signal }) => {
+const uniqueCatalogResults = (results) => {
+  const seen = new Set();
+  return results.filter((result) => {
+    const key = result.titleId
+      ? `id:${result.titleId}`
+      : `details:${JSON.stringify(result)}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+};
+
+const searchLibrary = async ({ book, library, formatSelection, signal }) => {
   const title = book.book_title ?? book.title ?? '';
+  const formats = FORMAT_SELECTIONS[formatSelection];
   const query = new URLSearchParams({
     query: title,
-    format: FORMAT_QUERY,
+    format: formats.join(','),
     page: '1',
     perPage: '2',
   });
@@ -54,15 +86,25 @@ const searchLibrary = async ({ book, library, signal }) => {
   const { items = [] } = await response.json();
   const requestedTitle = normalizeTitle(title);
 
-  return items
+  const results = items
     .filter((item) => {
       const resultTitle = normalizeTitle(item.title);
-      return resultTitle && requestedTitle.includes(resultTitle);
+      return (
+        resultTitle &&
+        requestedTitle.includes(resultTitle) &&
+        matchesFormatSelection(item, formatSelection)
+      );
     })
     .map((item) => toCatalogResult(item, library));
+  return uniqueCatalogResults(results);
 };
 
-const searchLibraryBulk = async ({ library, titleIds, signal }) => {
+const searchLibraryBulk = async ({
+  library,
+  titleIds,
+  formatSelection,
+  signal,
+}) => {
   const query = new URLSearchParams({ libraryKey: library.libraryId });
   titleIds.forEach((titleId) => query.append('titleIds', titleId));
 
@@ -78,15 +120,9 @@ const searchLibraryBulk = async ({ library, titleIds, signal }) => {
   }
 
   const { items = [] } = await response.json();
-  return items.filter((item) => {
-    if (!Array.isArray(item.formats) || item.formats.length === 0) {
-      return item.type?.id === 'ebook' || item.type?.id === 'audiobook';
-    }
-
-    return item.formats.some((format) =>
-      FORMAT_IDS.has(typeof format === 'string' ? format : format?.id)
-    );
-  });
+  return items.filter((item) =>
+    matchesFormatSelection(item, formatSelection)
+  );
 };
 
 const mapWithConcurrency = async (tasks, concurrency, callback) => {
@@ -120,8 +156,12 @@ const findLibraryRecommendations = async (
   books,
   libraries,
   signal,
-  { onProgress, onCacheError } = {}
+  { formatSelection = 'both', onProgress, onCacheError } = {}
 ) => {
+  if (!FORMAT_SELECTIONS[formatSelection]) {
+    throw new Error(`Unsupported format selection: ${formatSelection}`);
+  }
+
   const listingsByLibrary = Object.fromEntries(
     libraries.map((library) => [
       String(library.libraryId),
@@ -137,11 +177,26 @@ const findLibraryRecommendations = async (
   books.forEach((book, bookIndex) => {
     libraries.forEach((library) => {
       const libraryId = String(library.libraryId);
-      const cached = getCachedCatalogResult(libraryId, book, onCacheError);
+      const cached = getCachedCatalogResult(
+        libraryId,
+        book,
+        formatSelection,
+        onCacheError
+      );
 
       if (cached.hit) {
-        listingsByLibrary[libraryId][bookIndex].books = cached.value;
-        cached.value.forEach((item) => {
+        const results = uniqueCatalogResults(cached.value);
+        listingsByLibrary[libraryId][bookIndex].books = results;
+        if (results.length !== cached.value.length) {
+          cacheCatalogResult(
+            libraryId,
+            book,
+            results,
+            formatSelection,
+            onCacheError
+          );
+        }
+        results.forEach((item) => {
           if (item.titleId) knownIdsByBook[bookIndex].add(String(item.titleId));
         });
       } else {
@@ -218,6 +273,7 @@ const findLibraryRecommendations = async (
         const items = await searchLibraryBulk({
           library: job.library,
           titleIds: job.titleIds,
+          formatSelection,
           signal,
         });
         const itemsById = new Map(
@@ -262,13 +318,20 @@ const findLibraryRecommendations = async (
             job.libraryId,
             entry.book,
             results,
+            formatSelection,
             onCacheError
           );
         });
       } else {
-        const results = await searchLibrary({ ...job, signal });
+        const results = await searchLibrary({ ...job, formatSelection, signal });
         listingsByLibrary[job.libraryId][job.bookIndex].books = results;
-        cacheCatalogResult(job.libraryId, job.book, results, onCacheError);
+        cacheCatalogResult(
+          job.libraryId,
+          job.book,
+          results,
+          formatSelection,
+          onCacheError
+        );
       }
     } catch (error) {
       if (error.name === 'AbortError') throw error;
@@ -308,7 +371,11 @@ const findLibraryRecommendations = async (
           throw new DOMException('Search was cancelled.', 'AbortError');
         }
 
-        const titleResults = await searchLibrary({ ...job, signal });
+        const titleResults = await searchLibrary({
+          ...job,
+          formatSelection,
+          signal,
+        });
         const resultsById = new Map(
           [...job.bulkResults, ...titleResults].map((item) => [
             item.titleId,
@@ -317,7 +384,13 @@ const findLibraryRecommendations = async (
         );
         const results = Array.from(resultsById.values());
         listingsByLibrary[job.libraryId][job.bookIndex].books = results;
-        cacheCatalogResult(job.libraryId, job.book, results, onCacheError);
+        cacheCatalogResult(
+          job.libraryId,
+          job.book,
+          results,
+          formatSelection,
+          onCacheError
+        );
       } catch (error) {
         if (error.name === 'AbortError') throw error;
 

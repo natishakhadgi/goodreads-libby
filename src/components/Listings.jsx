@@ -21,6 +21,24 @@ const Listings = ({tab, data}) => {
 
     const listings = Array.isArray(listingTab[tab]) ? listingTab[tab] : [];
 
+    const getVisibleRowKey = (book) =>
+        JSON.stringify(
+          tab === 'read'
+            ? [
+                book.libraryId ?? book.library,
+                book.format,
+                book.availableCopies,
+                book.ownedCopies,
+              ]
+            : [
+                book.libraryId ?? book.library,
+                book.format,
+                book.holdsCount,
+                book.ownedCopies,
+                book.estimatedWaitDays,
+              ]
+        );
+
     return (
         <Box display='flex' flexDirection='column' gap={2} alignItems='center' sx={{mt:5}}>
         {
@@ -37,6 +55,13 @@ const Listings = ({tab, data}) => {
                 ...(listing?.eBooks ?? []),
                 ...(listing?.audioBooks ?? [])
               ];
+              const seenRows = new Set();
+              const visibleBooks = books.filter((book) => {
+                const key = getVisibleRowKey(book);
+                if (seenRows.has(key)) return false;
+                seenRows.add(key);
+                return true;
+              });
           return (
               <Box key={`${listing.title}-${listingIndex}`} width={{xs:'90%', md:'700px'}} minHeight='125px' height='100%'
               display={'flex'}
@@ -61,7 +86,7 @@ const Listings = ({tab, data}) => {
                     <Typography>{listing.author}</Typography>
                   </Box>
 
-                {tab === 'wishlist' && books.length === 0 ? (
+                {tab === 'wishlist' && visibleBooks.length === 0 ? (
                   <Typography sx={{ ml: '5px' }}>
                     No copies found in the selected libraries.
                   </Typography>
@@ -84,7 +109,7 @@ const Listings = ({tab, data}) => {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {books.map((book, idx) => (
+                        {visibleBooks.map((book, idx) => (
                         <TableRow key={`${book.library}-${book.format}-${idx}`} sx={{ '&:last-child td, &:last-child th': { border: 0 } }}>
                           <TableCell align='left'>{libraryCodes[book.library] ?? book.library}</TableCell>
                           <TableCell align='left'>{book.format}</TableCell>

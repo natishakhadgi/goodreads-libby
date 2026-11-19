@@ -40,7 +40,6 @@ no owned copies in any selected library.
 
 OverDrive does not allow browser-origin requests from this app. The Vite
 development server proxies `/api/overdrive` to the OverDrive Thunder API.
-On Vercel, `api/overdrive/[...path].js` provides the same proxy for supported
-media requests, forwarding them to `https://thunder.api.overdrive.com/v2`.
-The repository can be deployed directly as a Vite project; the proxy is deployed
-as a serverless function from the `api` directory.
+On Vercel, `vercel.json` rewrites supported media requests to
+`https://thunder.api.overdrive.com/v2`. The repository can be deployed directly
+as a Vite project.
